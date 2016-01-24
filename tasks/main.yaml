@@ -1,0 +1,89 @@
+---
+  - name: Install EPEL repository
+    yum: name=epel-release state=installed
+    become: yes
+
+  - name: Install Puppet repo
+    yum: name=https://yum.puppetlabs.com/puppetlabs-release-el-7.noarch.rpm state=present
+    become: yes
+
+  - name: install the 'Development tools' package group
+    yum: name="@Development tools" state=present
+    become: yes
+
+  - name: Install scalable web server and dependencies
+    yum: name={{ item.name }} state=latest
+    with_items:
+      - { name: httpd }
+      - { name: httpd-devel }
+      - { name: apr-devel }
+      - { name: apr-util-devel }
+      - { name: mod_ssl }
+      - { name: ruby }
+      - { name: ruby-devel}
+      - { name: rubygems }
+      - { name: libcurl-devel }
+      - { name: zlib-devel }
+      - { name: make }
+      - { name: hiera }
+      - { name: automake }
+      - { name: openssl-devel}
+    become: yes
+
+  - name: Install all the required packages for a puppetmaster
+    yum: name=puppet-server state=latest
+    become: yes
+
+  - name: Install rack passenger
+    command: gem install rack passenger creates="/usr/local/bin/passenger"
+    become: yes
+
+  - name: install passenger-install-apache2-module
+    command: /bin/bash -c "yes | /usr/local/bin/passenger-install-apache2-module" creates=/usr/local/bin/passenger-install-apache2-module
+    become: yes
+
+  - name: Install default hiera.conf
+    template: src=templates/hiera.conf.j2 dest=/etc/puppet/hiera.conf owner=root group=root mode=0644
+    become: yes
+
+  - name: install puppetmaster conf
+    template: src=templates/puppetmaster.conf.j2 dest=/etc/httpd/conf/puppetmaster.conf owner=puppet group=puppet
+    become: yes
+
+  - name: Enable Apache
+    command: systemctl enable httpd.service
+    become: yes
+
+  - name: Create directory for config.ru
+    file: path=/usr/share/puppet/rack/puppetmasterd state=directory owner=puppet group=puppet
+    become: yes
+
+  - name: Create more config directories
+    file: path=/usr/share/puppet/rack/puppetmasterd/public state=directory owner=puppet group=puppet
+    become: yes
+
+  - name: Create yet more directories
+    file: path=/usr/share/puppet/rack/puppetmasterd/tmp state=directory owner=puppet group=puppet
+    become: yes
+
+  - name: Install default puppet.conf
+    template: src=templates/puppet.conf.j2 dest=/etc/puppet/puppet.conf owner=root group=root mode=0644
+    become: yes
+
+  - name: Copy rack config
+    template: src=templates/config.ru.j2 dest=/usr/share/puppet/rack/puppetmasterd/config.ru owner=puppet group=puppet mode=0644
+    become: yes
+
+  - name: Stop WEBrick
+    command: systemctl disable puppetmaster.service
+    become: yes
+
+  - name: Start Apache
+    service: name=httpd state=started
+    become: yes
+
+  - name: Start Puppet Master service
+    command: puppet master --verbose --no-daemonize &
+    async: 45
+    poll: 0
+    become: yes
